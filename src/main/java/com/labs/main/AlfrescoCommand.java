@@ -1,13 +1,14 @@
-package com.labs.command;
+package com.labs.main;
 
 import org.springframework.stereotype.Component;
+
+import com.labs.acs.AcsCommand;
+import com.labs.config.ConfigCommand;
+
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.ScopeType;
-
-import com.labs.config.AcsCommand;
-import com.labs.config.ConfigCommand;
 
 @Component
 @Command(name = "alfresco", scope = ScopeType.INHERIT, mixinStandardHelpOptions = true, version = "1.0", description = "Alfresco CLI tool", exitCodeOnExecutionException = 1, showDefaultValues = true, usageHelpAutoWidth = true, subcommands = {

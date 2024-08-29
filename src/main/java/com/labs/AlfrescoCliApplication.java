@@ -7,7 +7,7 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
-import com.labs.command.AlfrescoCommand;
+import com.labs.main.AlfrescoCommand;
 
 import picocli.CommandLine;
 
