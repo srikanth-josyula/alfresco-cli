@@ -1,23 +1,20 @@
 package com.labs.acs.nodes;
 
-import com.labs.model.ConfigModel;
-import com.labs.model.ConfigStore;
-
+import com.labs.acs.nodes.actions.DownloadCommand;
 import picocli.CommandLine.Command;
 
-@Command(name = "node", description = "Node commands")
+@Command(
+    name = "node",
+    description = "Alfresco Node Commands",
+    subcommands = {DownloadCommand.class},
+    mixinStandardHelpOptions = true,
+    usageHelpAutoWidth = true
+)
 public class NodeCommand implements Runnable {
 
     @Override
     public void run() {
-        // Retrieve the configuration from the ConfigStore
-        ConfigModel authModel = ConfigStore.getInstance().getConfigModel();
-        
-        if (authModel != null) {
-            System.out.println(authModel.getAlfrescoUrl());
-            System.out.println(authModel.getBase64Credentials());
-        } else {
-            System.out.println("No configuration found. Please run the 'config' command first.");
-        }
+        // Display the help message for the node command
+        new picocli.CommandLine(this).usage(System.out);
     }
 }

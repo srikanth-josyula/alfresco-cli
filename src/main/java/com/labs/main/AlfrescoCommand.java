@@ -5,14 +5,18 @@ import org.springframework.stereotype.Component;
 import com.labs.acs.AcsCommand;
 import com.labs.config.ConfigCommand;
 
-import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
-import picocli.CommandLine.ScopeType;
 
 @Component
-@Command(name = "alfresco", scope = ScopeType.INHERIT, mixinStandardHelpOptions = true, version = "1.0", description = "Alfresco CLI tool", exitCodeOnExecutionException = 1, showDefaultValues = true, usageHelpAutoWidth = true, subcommands = {
-		ConfigCommand.class, AcsCommand.class })
+@Command(
+    name = "alfresco",
+    description = "Alfresco CLI tool",
+    subcommands = {ConfigCommand.class, AcsCommand.class},
+    mixinStandardHelpOptions = true,
+    version = "1.0",
+    usageHelpAutoWidth = true
+)
 public class AlfrescoCommand implements Runnable {
 
 	@Option(names = { "-h", "--help" }, 
@@ -28,9 +32,9 @@ public class AlfrescoCommand implements Runnable {
 	@Override
 	public void run() {
 		if (usageHelpRequested) {
-			new CommandLine(this).usage(System.out);
+			new picocli.CommandLine(this).usage(System.out);
 		} else if (versionHelpRequested) {
-			 new CommandLine(this).printVersionHelp(System.out);
+			new picocli.CommandLine(this).usage(System.out);
 		}
 	}
 }

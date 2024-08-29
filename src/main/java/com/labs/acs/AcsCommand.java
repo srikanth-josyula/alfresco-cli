@@ -1,26 +1,20 @@
 package com.labs.acs;
 
 import com.labs.acs.nodes.NodeCommand;
-
-import picocli.CommandLine;
 import picocli.CommandLine.Command;
 
 @Command(
     name = "acs",
-    description = "Alfresco Content Services commands",
-    subcommands = {
-        NodeCommand.class,      // Add other subcommands here
-    },
+    description = "Alfresco Content Services Commands",
+    subcommands = {NodeCommand.class},
     mixinStandardHelpOptions = true,
-    usageHelpAutoWidth = true,
-    subcommandsRepeatable = true
+    usageHelpAutoWidth = true
 )
 public class AcsCommand implements Runnable {
 
     @Override
     public void run() {
-        CommandLine cmd = new CommandLine(this);
-        cmd.usage(System.out);
+        // Display the help message for the ACS command
+        new picocli.CommandLine(this).usage(System.out);
     }
 }
-
