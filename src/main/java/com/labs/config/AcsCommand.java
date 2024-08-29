@@ -21,8 +21,8 @@ public class AcsCommand implements Runnable {
 
 	@Override
 	public void run() {
-		System.out.println("Usage: alfresco acs [COMMAND]");
-		System.out.println("Commands:");
+		//System.out.println("Usage: alfresco acs [COMMAND]");
+		//System.out.println("Commands:");
 		// List ACS specific commands here
 	}
 }
