@@ -3,6 +3,7 @@ package com.labs.config;
 import java.util.Base64;
 
 import com.labs.model.ConfigModel;
+import com.labs.model.ConfigStore;
 
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
@@ -36,8 +37,11 @@ public class ConfigCommand implements Runnable {
 
         String credentials = username + ":" + password;
         String base64Credentials = Base64.getEncoder().encodeToString(credentials.getBytes());
-        
+
         ConfigModel configModel = new ConfigModel(alfrescoUrl, base64Credentials);
+        // Store the configuration in the ConfigStore
+        ConfigStore.getInstance().setConfigModel(configModel);
+        
         System.out.println(configModel);
     }
 }

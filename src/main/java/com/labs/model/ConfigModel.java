@@ -3,6 +3,10 @@ package com.labs.model;
 public class ConfigModel {
 	private String alfrescoUrl;
 	private String base64Credentials;
+	
+	public ConfigModel() {
+		
+	}
 
 	public ConfigModel(String alfrescoUrl, String base64Credentials) {
 		this.alfrescoUrl = alfrescoUrl;
