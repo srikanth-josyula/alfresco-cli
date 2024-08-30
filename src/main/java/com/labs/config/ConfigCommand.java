@@ -25,7 +25,8 @@ public class ConfigCommand implements Runnable {
     		paramLabel = "<password>", 
     		description = "The password for authentication.")
     private String password;
-
+    
+   
     @Override
     public void run() {
     	if (alfrescoUrl == null || username == null || password == null) {
@@ -35,7 +36,7 @@ public class ConfigCommand implements Runnable {
         }
 
         String credentials = username + ":" + password;
-        String base64Credentials = Base64.getEncoder().encodeToString(credentials.getBytes());
+        String base64Credentials = "Basic " + Base64.getEncoder().encodeToString(credentials.getBytes());
 
         ConfigModel configModel = new ConfigModel(alfrescoUrl, base64Credentials);
         // Store the configuration in the ConfigStore
