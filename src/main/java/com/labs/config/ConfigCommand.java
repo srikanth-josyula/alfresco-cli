@@ -5,7 +5,6 @@ import java.util.Base64;
 import com.labs.model.ConfigModel;
 import com.labs.model.ConfigStore;
 
-import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Parameters;
 
@@ -31,7 +30,7 @@ public class ConfigCommand implements Runnable {
     public void run() {
     	if (alfrescoUrl == null || username == null || password == null) {
             // Print usage help if any parameter is missing
-            new CommandLine(this).usage(System.out);
+    		 new picocli.CommandLine(this).usage(System.out);
             return;
         }
 

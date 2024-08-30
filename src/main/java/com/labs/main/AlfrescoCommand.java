@@ -2,7 +2,7 @@ package com.labs.main;
 
 import org.springframework.stereotype.Component;
 
-import com.labs.acs.AcsCommand;
+import com.labs.acs.nodes.NodeCommand;
 import com.labs.config.ConfigCommand;
 
 import picocli.CommandLine.Command;
@@ -12,7 +12,7 @@ import picocli.CommandLine.Option;
 @Command(
     name = "alfresco",
     description = "Alfresco CLI tool",
-    subcommands = {ConfigCommand.class, AcsCommand.class},
+    subcommands = {ConfigCommand.class, NodeCommand.class},
     mixinStandardHelpOptions = true,
     version = "1.0",
     usageHelpAutoWidth = true
