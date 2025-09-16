@@ -1,0 +1,348 @@
+package com.jh.mailcapture.services;
+
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.Serializable;
+import java.text.DateFormat;
+import java.text.Normalizer;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.TimeZone;
+
+import org.alfresco.model.ContentModel;
+import org.alfresco.service.ServiceRegistry;
+import org.alfresco.service.cmr.repository.ContentWriter;
+import org.alfresco.service.cmr.repository.DuplicateChildNodeNameException;
+import org.alfresco.service.cmr.repository.NodeRef;
+import org.alfresco.service.cmr.repository.StoreRef;
+import org.alfresco.service.cmr.search.ResultSet;
+import org.alfresco.service.cmr.search.SearchService;
+import org.alfresco.service.namespace.NamespaceService;
+import org.alfresco.service.namespace.QName;
+import org.alfresco.repo.content.MimetypeMap;
+import org.alfresco.util.ISO9075;
+import org.apache.commons.io.FilenameUtils;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import com.vdurmont.emoji.EmojiParser;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jh.mailcapture.constants.CommonConstants;
+import com.jh.mailcapture.model.AttachmentsVO;
+import com.jh.mailcapture.model.MailBodyVO;
+
+public class AlfrescoOperations {
+
+	private static final Log logger = LogFactory.getLog(AlfrescoOperations.class);
+	
+	// Namespaces
+	private static final String NAMESPACE_JH_CONTENT_MODEL = "http://www.alfresco.org/model/johnhancock/1.0";
+	
+	// Types
+	public static final QName TYPE_JH_DOCUMENT = QName.createQName(NAMESPACE_JH_CONTENT_MODEL, "JHDocument");
+	
+	private ServiceRegistry serviceRegistry;
+
+	public NodeRef writeContentToAlfresco(String siteName, String captureUserName, MailBodyVO mailMetadata) {
+		try {
+			// Dummy logger statements
+			logger.debug("Writing content to Alfresco repository.");
+			logger.debug("Subject: "+ mailMetadata.getSubject());
+			// logger.info("Body: "+ mailMetadata.getBody());
+			logger.debug("Sent Date: "+ mailMetadata.getSentDate());
+			logger.debug("Sender: "+ mailMetadata.getSender());
+			logger.debug("Receiver: "+mailMetadata.getReceiver());
+			logger.debug("Recipients: "+ mailMetadata.getRecipients());
+
+			String updatedFileName;
+			if (mailMetadata.getSubject() != null) {
+				updatedFileName = cleanFileName(mailMetadata.getSubject(), getTimeinEST()) + ".txt";
+			} else {
+				updatedFileName = getTimeinEST() + ".txt";
+			}
+
+			Map<QName, Serializable> props = new HashMap<>();
+			props.put(ContentModel.PROP_TITLE, mailMetadata.getSubject());
+			props.put(ContentModel.PROP_NAME, updatedFileName);
+
+			NodeRef intakeFolderNodeRef = getParentNodeRef(siteName, captureUserName);
+			if (intakeFolderNodeRef != null) {
+				// Body Mail
+				NodeRef mailNodeRef = createContentNodeRef(intakeFolderNodeRef, updatedFileName, props);
+				if (mailNodeRef != null) {
+					writeContentStreamToCustomDocument(new ByteArrayInputStream(mailMetadata.getBody().getBytes()),
+							mailNodeRef, getMimeType(updatedFileName));
+					addEmailedAspect(mailNodeRef, mailMetadata);
+					logger.info("Mail with Subject: '"+mailMetadata.getSubject()+"' , is uploaded to Alfresco under nodeRef: "+mailNodeRef);
+					int attachmentCount = mailMetadata.getAttachmentsObjList() != null ? mailMetadata.getAttachmentsObjList().size(): 0;
+					logger.info("Total number of attachments: "+attachmentCount);
+
+					if (mailMetadata.getAttachmentsObjList() != null) {
+						processAttachments(mailNodeRef, intakeFolderNodeRef, mailMetadata);
+					}
+					return mailNodeRef;
+				}
+			} else {
+				logger.error("Intake folder NodeRef is null. Cannot create mail node.");
+			}
+
+		} catch (DuplicateChildNodeNameException e) {
+			logger.error("Duplicate child node name exception: "+ e.getMessage());
+		} catch (Exception e) {
+			logger.error("Exception occurred while writing content: "+ e.getMessage());
+		}
+
+		return null;
+	}
+
+	public void processAttachments(NodeRef mailNodeRef, NodeRef intakeFolderNodeRef, MailBodyVO mailMetadata)
+			throws Exception {
+
+		List<Map<String, String>> attachmentDetails = new ArrayList<>();
+		for (AttachmentsVO attachment : mailMetadata.getAttachmentsObjList()) {
+			NodeRef attachmentNodeRef = createAttachmentNode(intakeFolderNodeRef, attachment);
+			addAttachementAssoc(mailNodeRef, attachmentNodeRef);
+
+			// Collect attachment details for logging
+			Map<String, String> attachmentDetail = new HashMap<>();
+			attachmentDetail.put("subject", attachment.getFileName());
+			attachmentDetail.put("nodeRef", attachmentNodeRef.toString());
+			attachmentDetails.add(attachmentDetail);
+		}
+		// Log attachment details as JSON
+		logger.info("Attachment details: "+ new ObjectMapper().writeValueAsString(attachmentDetails));
+
+	}
+
+	private NodeRef createAttachmentNode(NodeRef intakeFolderNodeRef, AttachmentsVO attachment) {
+	    String mimeType = attachment.getMimeType();
+	    InputStream is = null;
+	    NodeRef attachmentNodeRef = null;
+
+	    try {
+	        is = new ByteArrayInputStream(attachment.getByteArry());
+	       // String attachFilename = attachment.getFileName();
+	       // String attachementExt = FilenameUtils.getExtension(attachFilename);
+	       // String attachFilename_edit = FilenameUtils.getBaseName(attachFilename) + getTimeinEST() + "." + attachementExt;
+	        
+	        String attachFilename_edit =  processAttachmentFilename(attachment);
+
+	        Map<QName, Serializable> attachprops = new HashMap<>();
+	        attachprops.put(ContentModel.PROP_NAME, attachFilename_edit);
+
+	        attachmentNodeRef = createContentNodeRef(intakeFolderNodeRef, attachFilename_edit, attachprops);
+	        writeContentStreamToCustomDocument(is, attachmentNodeRef, mimeType);
+	    } catch (Exception e) {
+	        logger.error("Error creating attachment node: " + e.getMessage(), e);
+	    } finally {
+	        if (is != null) {
+	            try {
+	                is.close();
+	            } catch (IOException e) {
+	                logger.error("Error closing InputStream: " + e.getMessage(), e);
+	            }
+	        }
+	    }
+
+	    return attachmentNodeRef;
+	}
+
+	public boolean writeContentStreamToCustomDocument(InputStream contentInputStream, NodeRef docNodeRef,
+			String mimeType) {
+
+		boolean isSuccess = false;
+
+		try {
+			ContentWriter writer = this.serviceRegistry.getContentService().getWriter(docNodeRef,ContentModel.PROP_CONTENT, true);
+			writer.setMimetype(mimeType);
+			writer.putContent(contentInputStream);
+			isSuccess = true;
+			logger.debug("Content written successfully to document: " + docNodeRef);
+		} catch (Exception e) {
+			logger.error("Error occurred while writing content to document", e);
+		} finally {
+			try {
+				contentInputStream.close();
+			} catch (Exception e) {
+				logger.error("Error occurred while closing content input stream", e);
+			}
+		}
+
+		return isSuccess;
+	}
+
+	public NodeRef createContentNodeRef(NodeRef parentFolderNodeRef, String fileName, Map<QName, Serializable> props) {
+		NodeRef docNodeRef = null;
+		try {
+			docNodeRef = serviceRegistry.getNodeService()
+					.createNode(parentFolderNodeRef, ContentModel.ASSOC_CONTAINS,
+							QName.createQName(NamespaceService.CONTENT_MODEL_1_0_URI, fileName),
+							TYPE_JH_DOCUMENT, props)
+					.getChildRef();
+
+			logger.debug("Content node created successfully: " + docNodeRef);
+		} catch (Exception e) {
+			logger.error("Error occurred while creating content node", e);
+		}
+
+		return docNodeRef;
+	}
+
+	public boolean addEmailedAspect(NodeRef docNodeRef, MailBodyVO mailMetadata) {
+		try {
+			Map<QName, Serializable> aspectProperties = new HashMap<>();
+
+			aspectProperties.put(ContentModel.PROP_SUBJECT, cleanText(mailMetadata.getSubject()));
+			//aspectProperties.put(ContentModel.PROP_SUBJECT, mailMetadata.getSubject());
+			aspectProperties.put(ContentModel.PROP_SENTDATE, mailMetadata.getSentDate());
+			aspectProperties.put(ContentModel.PROP_ORIGINATOR, mailMetadata.getSender());
+			aspectProperties.put(ContentModel.PROP_ADDRESSEE, mailMetadata.getReceiver());
+			aspectProperties.put(ContentModel.PROP_ADDRESSEES, (Serializable) mailMetadata.getRecipients());
+
+			serviceRegistry.getNodeService().addAspect(docNodeRef, ContentModel.ASPECT_EMAILED, aspectProperties);
+
+			logger.debug("Content node updated with Aspect successfully: " + docNodeRef);
+
+			return true;
+		} catch (Exception e) {
+			logger.error("Error occurred while adding Emailed Aspect", e);
+			return false;
+		}
+	}
+
+	public boolean addAttachementAssoc(NodeRef docNodeRef, NodeRef attachmentNodeRef) {
+		try {
+			serviceRegistry.getNodeService().createAssociation(docNodeRef, attachmentNodeRef,
+					ContentModel.ASSOC_ATTACHMENTS);
+			logger.debug("Content node updated with Attachements successfully: " + docNodeRef);
+			return true;
+		} catch (Exception e) {
+			logger.error("Error occurred while adding Attachements Association", e);
+			return false;
+		}
+	}
+
+	private NodeRef getParentNodeRef(String siteName, String captureUserName) {
+		NodeRef parentFolderNodeRef = null;
+		String parentXpath = "PATH:\"/app:company_home/st:sites/cm:" + siteName + "/cm:documentLibrary/";
+		String emailFolderxpath = getXpathByPath(CommonConstants.INTAKE_FOLDER_NAME);
+		String userFolderxpath = getXpathByPath(captureUserName);
+
+		if (emailFolderxpath == null || emailFolderxpath.isEmpty()) {
+			logger.error("emailFolderxpath is null or empty");
+			return parentFolderNodeRef;
+		}
+
+		String finalXpath = parentXpath + emailFolderxpath + "/" + userFolderxpath + "\"";
+		logger.debug("Final Xpath: " + finalXpath);
+
+		ResultSet rs = getNodeRefList(serviceRegistry, StoreRef.STORE_REF_WORKSPACE_SPACESSTORE,
+				SearchService.LANGUAGE_LUCENE, finalXpath);
+		try {
+			if (rs == null) {
+				logger.error("Folder NodeRef ResultSet is null");
+			} else if (rs.length() == 0) {
+				logger.info("Folder NodeRef ResultSet is empty");
+			} else {
+				parentFolderNodeRef = rs.getNodeRef(0);
+			}
+		} catch (Exception e) {
+			logger.error("Exception occurred while processing ResultSet", e);
+		} finally {
+			if (rs != null) {
+				try {
+					rs.close();
+				} catch (Exception e) {
+					logger.error("Error occurred while closing ResultSet", e);
+				}
+			}
+		}
+		return parentFolderNodeRef;
+	}
+
+	public ResultSet getNodeRefList(ServiceRegistry serviceRegistry, StoreRef storeRef, String language, String path) {
+		ResultSet rs = null;
+		try {
+			rs = serviceRegistry.getSearchService().query(storeRef, language, path);
+		} catch (Exception e) {
+			logger.error("Error occurred while getting NodeRef List result: ", e);
+		}
+		return rs;
+	}
+
+	public String cleanText(String text) {
+	    if (text == null) {
+	        return null;
+	    }
+	    String textWithoutEmojis = EmojiParser.removeAllEmojis(text);
+	    return Normalizer.normalize(textWithoutEmojis, Normalizer.Form.NFKD)
+	            .replaceAll("[\\u2014\\u2013\\u002d\\u2010\\u2011\\u2012\\u2015\\uFE58\\uFE63\\uFF0D\\u2E3A\\u2E3B\\uFFFC\\uFEFF\\u0300-\\u036f]", "")
+	            .trim();
+	}
+
+	public String cleanFileName(String fileName, String date) {
+	    if (fileName == null || date == null) {
+	        return null;
+	    }
+	    String fileNameWithoutEmojis = EmojiParser.removeAllEmojis(fileName);
+	    return Normalizer.normalize(fileNameWithoutEmojis, Normalizer.Form.NFKD)
+	            .replaceAll("[/\\\\?%*:|\"<>`\\u2014\\u2013\\u002d\\u2010\\u2011\\u2012\\u2015\\uFE58\\uFE63\\uFF0D\\u2E3A\\u2E3B\\uFFFC\\uFEFF\\u0300-\\u036f]", "")
+	            .trim() + date;
+	}
+
+	public String cleanAttachmentFileName(String fileName) {
+	    if (fileName == null) {
+	        return null;
+	    }
+	    String fileNameWithoutEmojis = EmojiParser.removeAllEmojis(fileName);
+	    return Normalizer.normalize(fileNameWithoutEmojis, Normalizer.Form.NFKD)
+	            .replaceAll("[/\\\\?%*:|\"<>`\\u2014\\u2013\\u002d\\u2010\\u2011\\u2012\\u2015\\uFE58\\uFE63\\uFF0D\\u2E3A\\u2E3B\\uFFFC\\uFEFF\\u0300-\\u036f]", "")
+	            .trim();
+	}
+
+    public String processAttachmentFilename(AttachmentsVO attachment) {
+        String attachFilename = cleanAttachmentFileName(attachment.getFileName());
+        if (attachFilename != null && !attachFilename.isEmpty()) {
+            String attachementExt = FilenameUtils.getExtension(attachFilename);
+            if (attachementExt != null && !attachementExt.isEmpty()) {
+                return FilenameUtils.getBaseName(attachFilename) + getTimeinEST() + "." + attachementExt;
+            } else {
+            	logger.info("Attachment extension is null or empty using existing attachment name "+FilenameUtils.getBaseName(attachFilename));
+                return FilenameUtils.getBaseName(attachFilename) + getTimeinEST();
+            }
+        } else {
+        	logger.info("Attachment filename is null or empty setting empty Attachment name ");
+            return ""+ getTimeinEST();
+        }
+    }
+
+
+	public String getTimeinEST() {
+		DateFormat requiredDateFormat = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss-SSS");
+		requiredDateFormat.setTimeZone(TimeZone.getTimeZone("US/Eastern"));
+		String date = requiredDateFormat.format(new Date());
+		return "-" + date;
+	}
+
+	public String getMimeType(String fileName) {
+		//return URLConnection.guessContentTypeFromName(fileName);
+		return MimetypeMap.MIMETYPE_TEXT_PLAIN;
+	}
+
+	private String getXpathByPath(String intakeFolderName) {
+		return "cm:" + ISO9075.encode(intakeFolderName);
+	}
+
+	public ServiceRegistry getServiceRegistry() {
+		return serviceRegistry;
+	}
+
+	public void setServiceRegistry(ServiceRegistry serviceRegistry) {
+		this.serviceRegistry = serviceRegistry;
+	}
+}
